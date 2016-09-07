@@ -1900,13 +1900,15 @@ var _ = Describe("When a client connects", func() {
 					close(done)
 				})
 
-				itResetsGraceTimeWhenHandling(func(timeToSleep time.Duration) {
-					fakeContainer.RunStub = func(garden.ProcessSpec, garden.ProcessIO) (garden.Process, error) {
-						time.Sleep(timeToSleep)
-						return nil, errors.New("boom")
-					}
+				FContext("lol", func() {
+					itResetsGraceTimeWhenHandling(func(timeToSleep time.Duration) {
+						fakeContainer.RunStub = func(garden.ProcessSpec, garden.ProcessIO) (garden.Process, error) {
+							time.Sleep(timeToSleep)
+							return nil, errors.New("boom")
+						}
 
-					container.Run(processSpec, garden.ProcessIO{})
+						container.Run(processSpec, garden.ProcessIO{})
+					})
 				})
 			})
 
