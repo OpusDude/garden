@@ -312,6 +312,10 @@ type CPULimits struct {
 	LimitInShares uint64 `json:"limit_in_shares,omitempty"`
 }
 
+type PidLimits struct {
+	Limit uint64 `json:"limit,omitempty"`
+}
+
 // Resource limits.
 //
 // Please refer to the manual page of getrlimit for a description of the individual fields:
