@@ -1023,20 +1023,21 @@ func (s *GardenServer) streamProcess(logger lager.Logger, conn net.Conn, process
 	errCh := make(chan error, 1)
 
 	go func() {
-		status, err := process.Wait()
-		if err != nil {
-			logger.Error("wait-failed", err, lager.Data{
+		status := <-process.ExitStatus()
+
+		if status.Err != nil {
+			logger.Error("wait-failed", status.Err, lager.Data{
 				"id": process.ID(),
 			})
 
-			errCh <- err
+			errCh <- status.Err
 		} else {
 			logger.Info("exited", lager.Data{
 				"status": status,
 				"id":     process.ID(),
 			})
 
-			statusCh <- status
+			statusCh <- status.Code
 		}
 	}()
 

@@ -1708,9 +1708,13 @@ var _ = Describe("When a client connects", func() {
 
 						process.IDReturns("process-handle")
 
-						process.WaitStub = func() (int, error) {
-							writing.Wait()
-							return 123, nil
+						process.ExitStatusStub = func() chan garden.ProcessStatus {
+							ret := make(chan garden.ProcessStatus, 1)
+							go func() {
+								writing.Wait()
+								ret <- garden.ProcessStatus{Code: 123, Err: nil}
+							}()
+							return ret
 						}
 
 						return process, nil
@@ -1765,8 +1769,14 @@ var _ = Describe("When a client connects", func() {
 						process := new(fakes.FakeProcess)
 
 						process.IDReturns("process-handle")
-						process.WaitReturns(0, errors.New("oh no!"))
 
+						process.ExitStatusStub = func() chan garden.ProcessStatus {
+							ret := make(chan garden.ProcessStatus, 1)
+							go func() {
+								ret <- garden.ProcessStatus{Code: 0, Err: errors.New("oh no!")}
+							}()
+							return ret
+						}
 						return process, nil
 					}
 				})
@@ -1866,11 +1876,14 @@ var _ = Describe("When a client connects", func() {
 
 						process.IDReturns("process-handle")
 
-						process.WaitStub = func() (int, error) {
-							writing.Wait()
-							return 123, nil
+						process.ExitStatusStub = func() chan garden.ProcessStatus {
+							ret := make(chan garden.ProcessStatus, 1)
+							go func() {
+								writing.Wait()
+								ret <- garden.ProcessStatus{Code: 123, Err: nil}
+							}()
+							return ret
 						}
-
 						return process, nil
 					}
 				})
@@ -1967,10 +1980,9 @@ var _ = Describe("When a client connects", func() {
 						process := new(fakes.FakeProcess)
 						process.IDReturns("process-handle")
 
-						process.WaitStub = func() (int, error) {
+						process.ExitStatusStub = func() chan garden.ProcessStatus {
 							select {}
 						}
-
 						return process, nil
 					}
 				})
@@ -2003,7 +2015,7 @@ var _ = Describe("When a client connects", func() {
 				BeforeEach(func() {
 					fakeProcess = new(fakes.FakeProcess)
 					fakeProcess.IDReturns("process-handle")
-					fakeProcess.WaitStub = func() (int, error) {
+					fakeProcess.ExitStatusStub = func() chan garden.ProcessStatus {
 						select {}
 					}
 
@@ -2028,7 +2040,7 @@ var _ = Describe("When a client connects", func() {
 				BeforeEach(func() {
 					fakeProcess = new(fakes.FakeProcess)
 					fakeProcess.IDReturns("process-handle")
-					fakeProcess.WaitStub = func() (int, error) {
+					fakeProcess.ExitStatusStub = func() chan garden.ProcessStatus {
 						select {}
 					}
 
@@ -2053,7 +2065,7 @@ var _ = Describe("When a client connects", func() {
 				BeforeEach(func() {
 					fakeProcess = new(fakes.FakeProcess)
 					fakeProcess.IDReturns("process-handle")
-					fakeProcess.WaitStub = func() (int, error) {
+					fakeProcess.ExitStatusStub = func() chan garden.ProcessStatus {
 						select {}
 					}
 
@@ -2086,7 +2098,13 @@ var _ = Describe("When a client connects", func() {
 						process := new(fakes.FakeProcess)
 
 						process.IDReturns("process-handle")
-						process.WaitReturns(0, errors.New("oh no!"))
+						process.ExitStatusStub = func() chan garden.ProcessStatus {
+							ret := make(chan garden.ProcessStatus, 1)
+							go func() {
+								ret <- garden.ProcessStatus{Code: 0, Err: errors.New("oh no!")}
+							}()
+							return ret
+						}
 
 						return process, nil
 					}
