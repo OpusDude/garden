@@ -1016,6 +1016,7 @@ var _ = Describe("Connection", func() {
 					stderrStream("foo-handle", "process-handle", 123, func(conn net.Conn) {
 						conn.Write([]byte("stderr data"))
 					}),
+					cleanup(),
 				)
 			})
 
@@ -1062,15 +1063,18 @@ var _ = Describe("Connection", func() {
 				var wrappedConnections []*wrappedConnection
 
 				BeforeEach(func() {
+					realHijacker := hijacker
+
 					wrappedConnections = []*wrappedConnection{}
-					netHijacker := hijacker
+
 					fakeHijacker = new(connectionfakes.FakeHijackStreamer)
 					fakeHijacker.HijackStub = func(handler string, body io.Reader, params rata.Params, query url.Values, contentType string) (net.Conn, *bufio.Reader, error) {
-						conn, resp, err := netHijacker.Hijack(handler, body, params, query, contentType)
+						conn, resp, err := realHijacker.Hijack(handler, body, params, query, contentType)
 						wc := &wrappedConnection{Conn: conn}
 						wrappedConnections = append(wrappedConnections, wc)
 						return wc, resp, err
 					}
+					fakeHijacker.StreamStub = realHijacker.Stream
 
 					hijacker = fakeHijacker
 				})
@@ -1132,6 +1136,7 @@ var _ = Describe("Connection", func() {
 							})
 						},
 					),
+					cleanup(),
 					stdoutStream("foo-handle", "process-handle", 123, func(conn net.Conn) {
 						conn.Write([]byte("stdout data"))
 						conn.Write([]byte(fmt.Sprintf("roundtripped %s", <-stdInContent)))
@@ -1190,6 +1195,7 @@ var _ = Describe("Connection", func() {
 							})
 						},
 					),
+					cleanup(),
 					emptyStdoutStream("foo-handle", "process-handle", 123),
 					emptyStderrStream("foo-handle", "process-handle", 123),
 				)
@@ -1268,6 +1274,7 @@ var _ = Describe("Connection", func() {
 					),
 					emptyStdoutStream("foo-handle", "process-handle", 123),
 					emptyStderrStream("foo-handle", "process-handle", 123),
+					cleanup(),
 				)
 			})
 
@@ -1365,6 +1372,7 @@ var _ = Describe("Connection", func() {
 							})
 						},
 					),
+					cleanup(),
 					emptyStdoutStream("foo-handle", "process-handle", 123),
 					emptyStderrStream("foo-handle", "process-handle", 123),
 				)
@@ -1406,6 +1414,7 @@ var _ = Describe("Connection", func() {
 							},
 						)),
 					),
+					cleanup(),
 					emptyStdoutStream("foo-handle", "process-handle", 123),
 					emptyStderrStream("foo-handle", "process-handle", 123),
 				)
@@ -1492,6 +1501,7 @@ var _ = Describe("Connection", func() {
 					stderrStream("foo-handle", "process-handle", 123, func(conn net.Conn) {
 						conn.Write([]byte("stderr data"))
 					}),
+					cleanup(),
 				)
 			})
 
@@ -1616,6 +1626,7 @@ var _ = Describe("Connection", func() {
 							},
 						)),
 					),
+					cleanup(),
 					emptyStdoutStream("foo-handle", "process-handle", 123),
 					emptyStderrStream("foo-handle", "process-handle", 123),
 				)
@@ -1666,6 +1677,7 @@ var _ = Describe("Connection", func() {
 							})
 						},
 					),
+					cleanup(),
 					emptyStdoutStream("foo-handle", "process-handle", 123),
 					emptyStderrStream("foo-handle", "process-handle", 123),
 				)
@@ -1708,6 +1720,15 @@ func marshalProto(messages ...interface{}) string {
 	}
 
 	return result.String()
+}
+
+func cleanup() http.HandlerFunc {
+	return ghttp.CombineHandlers(
+		ghttp.VerifyRequest("DELETE", "/containers/foo-handle/processes/process-handle"),
+		func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		},
+	)
 }
 
 func emptyStdoutStream(handle, processid string, attachid int) http.HandlerFunc {
