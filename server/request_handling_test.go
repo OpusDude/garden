@@ -1716,6 +1716,10 @@ var _ = Describe("When a client connects", func() {
 							}()
 							return ret
 						}
+						process.WaitStub = func() (int, error) {
+							status := <-process.ExitStatus()
+							return status.Code, status.Err
+						}
 
 						return process, nil
 					}
@@ -1741,9 +1745,9 @@ var _ = Describe("When a client connects", func() {
 					Eventually(stdout).Should(gbytes.Say("mirrored stdin data"))
 					Eventually(stderr).Should(gbytes.Say("stderr data"))
 
-					status, err := process.Wait()
-					Ω(err).ShouldNot(HaveOccurred())
-					Ω(status).Should(Equal(123))
+					status := <-process.ExitStatus()
+					Ω(status.Err).ShouldNot(HaveOccurred())
+					Ω(status.Code).Should(Equal(123))
 				})
 
 				itResetsGraceTimeWhenHandling(func(timeToSleep time.Duration) {
@@ -1777,6 +1781,11 @@ var _ = Describe("When a client connects", func() {
 							}()
 							return ret
 						}
+						process.WaitStub = func() (int, error) {
+							status := <-process.ExitStatus()
+							return status.Code, status.Err
+						}
+
 						return process, nil
 					}
 				})
@@ -1851,8 +1860,24 @@ var _ = Describe("When a client connects", func() {
 
 			Context("when running succeeds", func() {
 				BeforeEach(func() {
+					writing := new(sync.WaitGroup)
+
+					process := new(fakes.FakeProcess)
+					process.IDReturns("process-handle")
+					process.ExitStatusStub = func() chan garden.ProcessStatus {
+						ret := make(chan garden.ProcessStatus, 1)
+						go func() {
+							writing.Wait()
+							ret <- garden.ProcessStatus{Code: 123, Err: nil}
+						}()
+						return ret
+					}
+					process.WaitStub = func() (int, error) {
+						status := <-process.ExitStatus()
+						return status.Code, status.Err
+					}
+
 					fakeContainer.RunStub = func(spec garden.ProcessSpec, io garden.ProcessIO) (garden.Process, error) {
-						writing := new(sync.WaitGroup)
 						writing.Add(1)
 
 						go func() {
@@ -1872,20 +1897,9 @@ var _ = Describe("When a client connects", func() {
 							Ω(err).ShouldNot(HaveOccurred())
 						}()
 
-						process := new(fakes.FakeProcess)
-
-						process.IDReturns("process-handle")
-
-						process.ExitStatusStub = func() chan garden.ProcessStatus {
-							ret := make(chan garden.ProcessStatus, 1)
-							go func() {
-								writing.Wait()
-								ret <- garden.ProcessStatus{Code: 123, Err: nil}
-							}()
-							return ret
-						}
 						return process, nil
 					}
+					fakeContainer.AttachReturns(process, nil)
 				})
 
 				It("should not log any environment variables and command line args", func() {
@@ -1980,7 +1994,7 @@ var _ = Describe("When a client connects", func() {
 						process := new(fakes.FakeProcess)
 						process.IDReturns("process-handle")
 
-						process.ExitStatusStub = func() chan garden.ProcessStatus {
+						process.WaitStub = func() (int, error) {
 							select {}
 						}
 						return process, nil
@@ -2015,7 +2029,7 @@ var _ = Describe("When a client connects", func() {
 				BeforeEach(func() {
 					fakeProcess = new(fakes.FakeProcess)
 					fakeProcess.IDReturns("process-handle")
-					fakeProcess.ExitStatusStub = func() chan garden.ProcessStatus {
+					fakeProcess.WaitStub = func() (int, error) {
 						select {}
 					}
 
@@ -2040,7 +2054,7 @@ var _ = Describe("When a client connects", func() {
 				BeforeEach(func() {
 					fakeProcess = new(fakes.FakeProcess)
 					fakeProcess.IDReturns("process-handle")
-					fakeProcess.ExitStatusStub = func() chan garden.ProcessStatus {
+					fakeProcess.WaitStub = func() (int, error) {
 						select {}
 					}
 
@@ -2065,7 +2079,7 @@ var _ = Describe("When a client connects", func() {
 				BeforeEach(func() {
 					fakeProcess = new(fakes.FakeProcess)
 					fakeProcess.IDReturns("process-handle")
-					fakeProcess.ExitStatusStub = func() chan garden.ProcessStatus {
+					fakeProcess.WaitStub = func() (int, error) {
 						select {}
 					}
 
@@ -2094,20 +2108,23 @@ var _ = Describe("When a client connects", func() {
 
 			Context("when waiting on the process fails server-side", func() {
 				BeforeEach(func() {
-					fakeContainer.RunStub = func(spec garden.ProcessSpec, io garden.ProcessIO) (garden.Process, error) {
-						process := new(fakes.FakeProcess)
+					process := new(fakes.FakeProcess)
 
-						process.IDReturns("process-handle")
-						process.ExitStatusStub = func() chan garden.ProcessStatus {
-							ret := make(chan garden.ProcessStatus, 1)
-							go func() {
-								ret <- garden.ProcessStatus{Code: 0, Err: errors.New("oh no!")}
-							}()
-							return ret
-						}
-
-						return process, nil
+					process.IDReturns("process-handle")
+					process.ExitStatusStub = func() chan garden.ProcessStatus {
+						ret := make(chan garden.ProcessStatus, 1)
+						go func() {
+							ret <- garden.ProcessStatus{Code: 0, Err: errors.New("oh no!")}
+						}()
+						return ret
 					}
+					process.WaitStub = func() (int, error) {
+						status := <-process.ExitStatus()
+						return status.Code, status.Err
+					}
+
+					fakeContainer.RunReturns(process, nil)
+					fakeContainer.AttachReturns(process, nil)
 				})
 
 				It("bubbles the error up", func() {
