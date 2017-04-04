@@ -1058,6 +1058,19 @@ var _ = Describe("Connection", func() {
 				Ω(stderr).Should(gbytes.Say("stderr data"))
 			})
 
+			It("returns the process exit code", func() {
+				process, err := connection.Run("foo-handle", spec, garden.ProcessIO{
+					Stdin:  bytes.NewBufferString("stdin data"),
+					Stdout: gbytes.NewBuffer(),
+					Stderr: gbytes.NewBuffer(),
+				})
+				Ω(err).ShouldNot(HaveOccurred())
+
+				status := <-process.ExitStatus()
+				Expect(status.Err).NotTo(HaveOccurred())
+				Expect(status.Code).To(Equal(3))
+			})
+
 			Describe("connection leak avoidance", func() {
 				var fakeHijacker *connectionfakes.FakeHijackStreamer
 				var wrappedConnections []*wrappedConnection
@@ -1351,6 +1364,23 @@ var _ = Describe("Connection", func() {
 					close(done)
 				})
 			})
+
+			Describe("getting the process exit code", func() {
+				It("returns the error", func(done Done) {
+					process, err := connection.Run("foo-handle", garden.ProcessSpec{
+						Path: "lol",
+						Args: []string{"arg1", "arg2"},
+						Dir:  "/some/dir",
+					}, garden.ProcessIO{Stdout: GinkgoWriter})
+					Ω(err).ShouldNot(HaveOccurred())
+
+					status := <-process.ExitStatus()
+					Expect(status.Err).To(HaveOccurred())
+					Expect(status.Err.Error()).To(ContainSubstring("connection: failed to hijack stream "))
+
+					close(done)
+				})
+			})
 		})
 
 		Context("when the connection breaks before an exit status is received", func() {
@@ -1522,9 +1552,22 @@ var _ = Describe("Connection", func() {
 				Eventually(stderr).Should(gbytes.Say("stderr data"))
 				Eventually(stdout).Should(gbytes.Say("roundtripped stdin data"))
 
-				status, err := process.Wait()
+				exitCode, err := process.Wait()
 				Ω(err).ShouldNot(HaveOccurred())
-				Ω(status).Should(Equal(3))
+				Ω(exitCode).Should(Equal(3))
+			})
+
+			It("should return the exit status", func() {
+				process, err := connection.Attach("foo-handle", "process-handle", garden.ProcessIO{
+					Stdin:  bytes.NewBufferString("stdin data"),
+					Stdout: gbytes.NewBuffer(),
+					Stderr: gbytes.NewBuffer(),
+				})
+				Ω(err).ShouldNot(HaveOccurred())
+
+				status := <-process.ExitStatus()
+				Ω(status.Err).ShouldNot(HaveOccurred())
+				Ω(status.Code).Should(Equal(3))
 			})
 
 			It("finishes streaming stdout and stderr before returning from .Wait", func() {
@@ -1543,7 +1586,6 @@ var _ = Describe("Connection", func() {
 				Ω(stdout).Should(gbytes.Say("roundtripped stdin data"))
 				Ω(stderr).Should(gbytes.Say("stderr data"))
 			})
-
 		})
 
 		Context("when an error occurs while reading the given stdin stream", func() {
@@ -1642,6 +1684,19 @@ var _ = Describe("Connection", func() {
 					_, err = process.Wait()
 					Ω(err).Should(HaveOccurred())
 					Ω(err.Error()).Should(ContainSubstring("oh no!"))
+				})
+			})
+
+			Describe("getting the exit code of the process", func() {
+				It("returns an error", func() {
+					process, err := connection.Attach("foo-handle", "process-handle", garden.ProcessIO{})
+
+					Ω(err).ShouldNot(HaveOccurred())
+					Ω(process.ID()).Should(Equal("process-handle"))
+
+					status := <-process.ExitStatus()
+					Ω(status.Err).Should(HaveOccurred())
+					Ω(status.Err.Error()).Should(ContainSubstring("oh no!"))
 				})
 			})
 		})
