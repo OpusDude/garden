@@ -1063,46 +1063,29 @@ func (s *GardenServer) streamInput(decoder *json.Decoder, in *io.PipeWriter, pro
 }
 
 func (s *GardenServer) streamProcess(logger lager.Logger, conn net.Conn, process garden.Process, stdinPipe *io.PipeWriter, connCloseCh chan struct{}) {
-	statusCh := make(chan int, 1)
-	errCh := make(chan error, 1)
-
-	go func() {
-		status, err := process.Wait()
-		if err != nil {
-			logger.Error("wait-failed", err, lager.Data{
-				"id": process.ID(),
-			})
-
-			errCh <- err
-		} else {
-			logger.Info("exited", lager.Data{
-				"status": status,
-				"id":     process.ID(),
-			})
-
-			statusCh <- status
-		}
-	}()
-
 	for {
 		select {
 
-		case status := <-statusCh:
-			transport.WriteMessage(conn, &transport.ProcessPayload{
-				ProcessID:  process.ID(),
-				ExitStatus: &status,
-			})
-
-			stdinPipe.Close()
-			return
-
-		case err := <-errCh:
-			e := err.Error()
-			transport.WriteMessage(conn, &transport.ProcessPayload{
-				ProcessID: process.ID(),
-				Error:     &e,
-			})
-
+		case status := <-process.ExitStatus():
+			if status.Err != nil {
+				logger.Error("wait-failed", status.Err, lager.Data{
+					"id": process.ID(),
+				})
+				e := status.Err.Error()
+				transport.WriteMessage(conn, &transport.ProcessPayload{
+					ProcessID: process.ID(),
+					Error:     &e,
+				})
+			} else {
+				logger.Info("exited", lager.Data{
+					"status": status,
+					"id":     process.ID(),
+				})
+				transport.WriteMessage(conn, &transport.ProcessPayload{
+					ProcessID:  process.ID(),
+					ExitStatus: &status.Code,
+				})
+			}
 			stdinPipe.Close()
 			return
 
@@ -1110,11 +1093,9 @@ func (s *GardenServer) streamProcess(logger lager.Logger, conn net.Conn, process
 			logger.Debug("detaching", lager.Data{
 				"id": process.ID(),
 			})
-
 			return
 
 		case <-connCloseCh:
-
 			return
 		}
 	}
